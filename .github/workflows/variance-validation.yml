@@ -1,0 +1,27 @@
+name: Variance regression
+on:
+  push:
+    branches: ['validation/variance-boundary']
+permissions:
+  contents: read
+jobs:
+  variance:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: r-lib/actions/setup-r@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05
+        with:
+          r-version: '4.5.0'
+          use-public-rspm: true
+      - name: Install test dependencies
+        run: Rscript -e 'install.packages(c("testthat", "nloptr"))'
+      - name: Check analytical answers and the old boundary failure
+        shell: Rscript {0}
+        run: |
+          source("R/ancombc_bias_correct.R")
+          objective <- function(t) -dnorm(1, 0, sqrt(0.99+t), log=TRUE)
+          old <- nloptr::neldermead(0, objective, lower=0)
+          print(old)
+          stopifnot(old$par == 0, objective(0.01) < objective(old$par))
+          message("The old simplex update stays at zero despite a better interior value.")
+          testthat::test_file("tests/testthat/test-bias-variance.R", stop_on_failure=TRUE)
