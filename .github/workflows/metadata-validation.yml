@@ -1,0 +1,36 @@
+name: Metadata regression
+on:
+  push:
+    branches: ['validation/single-column-metadata']
+permissions:
+  contents: read
+jobs:
+  metadata:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: r-lib/actions/setup-r@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05
+        with:
+          r-version: '4.5.0'
+          use-public-rspm: true
+      - name: Install testthat
+        run: Rscript -e 'install.packages("testthat")'
+      - name: Reject the old behavior and run the regression tests
+        shell: Rscript {0}
+        run: |
+          original <- readLines("R/data_sanity_check.R")
+          old <- sub("meta_data[colnames(feature_table), , drop = FALSE]",
+                     "meta_data[colnames(feature_table), ]", original, fixed=TRUE)
+          stopifnot(!identical(original, old))
+          eval(parse(text=old))
+          counts <- matrix(seq_len(16), nrow=4,
+                           dimnames=list(paste0("t", 1:4), paste0("s", 1:4)))
+          metadata <- data.frame(condition=factor(c("A", "A", "B", "B")),
+                                 row.names=colnames(counts))
+          rejected <- tryCatch(suppressWarnings(data_sanity_check(data=counts,
+              meta_data=metadata, fix_formula="condition", verbose=FALSE)), error=identity)
+          stopifnot(inherits(rejected, "error"),
+                    grepl("not in the meta data", conditionMessage(rejected), fixed=TRUE))
+          message("Unpatched code fails for the expected missing-metadata reason.")
+          source("R/data_sanity_check.R")
+          testthat::test_file("tests/testthat/test-single-column-metadata.R", stop_on_failure=TRUE)
